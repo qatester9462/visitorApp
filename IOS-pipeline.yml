@@ -1,0 +1,54 @@
+trigger: none  # Manual or triggered by another pipeline
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: TestingBotSecrets
+
+steps:
+- script: |
+    echo "TB_KEY: $(TB_KEY)"
+    echo "TB_SECRET: $(TB_SECRET)"
+    curl -I https://hub.testingbot.com/wd/hub/status
+  displayName: "Verify TestingBot connection"
+
+- script: | 
+    npm install -g appium appium-doctor
+    appium-doctor
+    npm install
+    npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator @wdio/junit-reporter
+  displayName: 'Install Appium & Dependencies'
+
+- script: |
+    echo "iOS Tests..."
+    export PLATFORM=iOS
+    export DEVICE_NAME='iPhone 16'
+    export PLATFORM_VERSION='18'
+    export APP='tb://d1587286ce46347c58017969'  # Replace with your real .app TestingBot ID
+    npx wdio run wdioIOS.testingbot.conf.js
+  env:
+    TB_KEY: $(TB_KEY)
+    TB_SECRET: $(TB_SECRET)
+    NODE_OPTIONS: --dns-result-order=ipv4first
+  displayName: 'Run iOS Tests'
+
+
+# ✅ Publish JUnit results to Azure DevOps Tests tab (assuming mocha-junit-reporter is configured)
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '**/test-results/junit/*.xml'
+    failTaskOnFailedTests: true
+    testRunTitle: 'Visitor-Appium iOS Test Results'
+  condition: succeededOrFailed()
+  displayName: 'Publish JUnit Test Results'
+
+# ✅ Publish Mochawesome HTML report as artifact
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'mochawesome-report'
+    ArtifactName: 'MochawesomeReport'
+    publishLocation: 'Container'
+  condition: succeededOrFailed()
+  displayName: 'Publish Mochawesome Report Artifact'
